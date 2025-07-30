@@ -1,0 +1,46 @@
+\section{Overview}
+\label{section:overview}
+
+Both presented approaches are concluded with their essential advantages and disadvantages. 
+That should be mentioned the technical feasibility was confirmed on the artificial simulation of 
+the solutions.
+
+
+\input{sections/composability/on-demand-tx}
+\input{sections/composability/pre-count-tx}
+
+
+\subsection{Extacall feedback model}
+In order to obtain and process results from an extcall, an asynchronous callback mechanism can 
+be employed. Contracts within the nil network that incorporate extcall functionality include 
+specific functions designed to handle raw results from the target contract on Ethereum. Upon 
+deployment, such a nil;'s contract initializes a lookup table for specific callback handlers, 
+each identifiable by a simple ID.
+
+When an extcall is expected to return a result or trigger an event, the contract explicitly 
+initiates a special event, as demonstrated in the code snippet below. Subsequently, the 
+EthDataProvider filters feedback data from the Ethereum network and invokes the appropriate 
+feedback function within the nil cluster. An illustrative example of such a nil;'s application 
+is presented below:
+
+\begin{verbatim}
+    struct Handler {
+        address handler_address;
+        string abi;
+    };
+
+    mapping (bytes32=>Handler) lookup;
+
+    function someFunc(address addr) public extcall {
+        addr.call(....); // extcall that is expected to return result to handle
+        emit FeedbackRequest(
+            address(this), // source contract
+            keccak256(handler_address, abi), // handler id
+            keccak256(addr, userEthAddress, userNonce) // unique id of extcall by which to filter
+            );
+    }
+
+    function processResult(bytes32 handlerId, bytes callback data) {
+        lookup[handlerId].call(lookup[handlerId].abi, data);
+    }
+\end{verbatim}

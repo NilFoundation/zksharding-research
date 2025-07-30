@@ -1,0 +1,46 @@
+\section{Proof Sytem in zkSharding}
+\label{sec:zkp}
+Our zkEVM \cite{zkevm} operates at the bytecode level by directly
+interpreting EVM bytecode. It  ensures high compatibility with existing
+Ethereum dApps and smart contracts, although it may produce slightly
+different state roots than the standard EVM due to the use of
+SNARK-friendly optimizations. Projects like Scroll \cite{scroll} and
+Hermez \cite{hermez} by Polygon also use this method.
+
+In our zkEVM, we use FRI-based placeholder proof system \cite{placeholder}
+which uses  lookup argument \cite{plookup}.  During the implementation of
+Plookup and its practical use, we encountered some technical issues that
+were not mentioned in the original solution. Therefore, we propose
+practical improvements \cite{plookuptweaks} for writing large PLONK
+circuits with a complex logic.
+
+zkSharding’s zkEVM consists of multiple subcircuits\todois{ref to PSE
+	solution}, each of which is handled by separate provers. A
+straightforward
+approach would be to have each prover $\prover_i$ generate an independent
+FRI-based proof $\pi_i$ for each subcircuit $\circuit_i$, resulting in $M$
+proofs (where $M$ is the number of subcircuits). These proofs would then
+need to be aggregated into a succinct proof $\pi$. However, FRI lacks
+homomorphic properties, making this aggregation process computationally
+expensive, which contradicts FRI's main advantage of prover efficiency.
+
+To address this, we designed Distributed FRI (DFRI) \cite{dfri}, which
+uses FRI batching techniques to enable efficient proof aggregation across
+multiple provers. In DFRI, the committed polynomials from each prover are
+combined using a collaboratively generated random challenge. This batching
+mechanism allows us to aggregate the proofs more efficiently while
+maintaining the security and integrity of the proof system. DFRI also
+ensures accountability by making dishonest behavior from any prover
+detectable, which is crucial for maintaining liveness in distributed
+systems like zkSharding.
+
+From a performance perspective, DFRI maintains the same proof size as a
+single FRI proof, as compared to the straightforward approach which would
+involve having $M$ proofs without infeasable aggregation layer. This is
+achieved through coordination between provers during the proving process
+by slightly increasing the communication overhead. Additonally, DFRI does
+not extend the overall proving time comparing to the single FRI-based
+prover.
+Overall, DFRI helps retain the efficiency of FRI while enabling secure,
+distributed proof generation, making it a critical innovation for
+zkSharding's scalability and security.

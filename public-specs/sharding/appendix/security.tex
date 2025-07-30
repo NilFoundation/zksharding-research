@@ -1,0 +1,27 @@
+\section{Protocol Security Proof}
+\label{appendix:security}
+
+\subsection{Committee Selection Security}
+\label{appendix:committee-selection-security}
+
+Assuming that validator assignment is random and nonintersecting, the probability of a single shard safety is given by a simple combinatorial argument:
+$$
+p_{\texttt{local\_fail}} \coloneqq
+\mathbb{P}\left(X \geq\lfloor m \cdot f \rfloor \right) = 
+\sum_{x=\lfloor m \cdot f \rfloor}^m 
+\frac{\binom{t}{x} \binom{n-t}{m-x}}{\binom{n}{m}}
+$$
+where we have used the following notation:
+\begin{itemize}
+    \item $n$ -- total nodes
+    \item $F$ -- safety threshold fraction in the network
+    \item $t = n \cdot F$ -- total faulty nodes
+    \item $m$ -- shard size
+    \item $f$ -- safety threshold fraction on a shard
+    \item $X$ -- number of faulty nodes in a shard
+\end{itemize}
+
+It can be shown that if $F \geq f$, then $p_{\texttt{local\_fail}} \geq 1/2$.
+% I might be delisional right now and instead of \geq here is just sim, meaning it is quite close to 1/2, not necessarily greater than.
+% Anyway, not a big deal, I think.
+Therefore there is an inherent need to set safety thresholds on main shard and local shards differently.

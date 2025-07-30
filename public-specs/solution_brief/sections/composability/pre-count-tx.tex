@@ -1,0 +1,165 @@
+\subsection{External transactions pre-process}
+A high-level and step-by-step description of pre-processed transactions is presented below 
+(Figure 2).
+
+\begin{figure}[H]
+    \centering
+	\includegraphics[scale=0.8]{figures/preprocess_design.pdf}
+    \caption{Pre-processed transactions design}
+     \label{figure:staking-market}
+\end{figure}
+
+The approach is called transaction pre-processing, as additional effort will be required from 
+the user side. Below, we cover the scenario:
+\begin{enumerate}
+    \item User generate an extcall transaction;
+    \item The client is required to preprocess a sequence of consecutively signed Ethereum 
+    transactions destined for a predetermined address;
+    This address is determined in advance, often based on the anticipated execution flow, 
+    such as using an execution flow tree;
+    \item Builders on their own or with the help of searchers derive and batch transactions 
+    from mempool. Then batch is sent to the proposer by auction or with the help of the relayers;
+    \item Proposer validates the transaction. Each time validator detects extcall, it creates a 
+    special data transaction on Ethereum and "binds" (by ordering) this transaction with the 
+    corresponding L1 call transaction. In the Figure, it is shown as (eTx\_d, eTx);
+    \item Batched Ethereum transaction sent to sequencer;
+    \item Sequencer aggregates Ethereum batch and submits it to L1 builders;
+    \item Ethereum proposers validate transactions, starting with the data transaction. 
+    In this process, the transaction puts data into the corresponding proxy contract;
+    \item Following the data transaction, the call transaction with the user's signature will be 
+    processed in sequence. This call is directed to the dedicated proxy where the data was 
+    previously saved;
+    \item The proxy contract function employs a call or delegatecall to the target contract.
+    This function is invoked with the data stored earlier by the data transaction, signed with 
+    the committee's signature.
+\end{enumerate}
+
+
+Before submitting a native transaction with an external call, the client must prepare a set of 
+consecutive signed Ethereum transactions. The addresses for these transactions will be derived 
+from the Control Flow Processor (CFP) from the source function. It is important to note that the 
+use of extcall is not allowed under explicit branching statements (recursion, loops, conditions). 
+Despite the fact that a revert implies an implicit flow break, it is still permitted within the 
+main flow. The CFP will disregard implicit main flow branching. The overall approach enables the 
+pre-construction of Ethereum transactions without obvious reduction, ensuring proper 
+identification of the target address.
+
+It is essential to note that changes to the proxy address must occur transparently without 
+immediate replacement. This is because the proxy address is derived during the Ethereum state 
+\( S_i \), while the actual proxy call takes place during state \( S_j \), where i<j. In the 
+need of an upgrade of the proxy contract on Ethereum, the address on Nil's cluster will need to 
+be updated after L1 finalization. Complete replacement on Nil will occur only after the 
+finalization of the cluster. "state\_source" stated before the last completed replacement will 
+not be accepted.
+
+The CFP will determine the number of Ethereum transactions to be prepared and the target address 
+for each of them. The client constructs a batch of sequenced transactions with substituted 
+addresses and signs them. Subsequently, the client prepares a joined native transaction that 
+may appear as follows:
+
+\begin{verbatim}
+    {
+        chainID: <nil chain ID>,
+        from: <user addr>,
+        to: <nil 20-bytes contract address>,
+        type: "extcall",
+        ....
+        data: <function selector>||<input params>
+        state_source: <blockID>, // state from which the proxy address derived
+        eth_tx: [
+            eTx1, eTx2, ..., eTxn
+        ]
+    }
+\end{verbatim}
+
+
+\subsubsection{Data transaction}
+In order to sign transactions on the L1, a data transaction must precede and store data on the 
+proxy contract. This prerequisite arises because, for the transaction to be signed, data must 
+be known in advance. The challenge arises from the fact that the input data is only 
+ascertainable when the nil;'s contract invokes an external call during the execution process. 
+
+To overcome this limitation, the proposer initiates a new Ethereum transaction, termed a 
+"data transaction". Within this transaction, a specific function on the proxy contract, such 
+as \(updateData\) is invoked with already computed extcall data as a parameter. Subsequently, 
+the proposer batches the data transaction along with the corresponding call transaction, 
+ensuring that the update data call to the proxy occurs immediately before the data update. 
+Through this approach, clients can proactively sign Ethereum transactions in advance, even 
+without knowledge of the actual input parameters.
+
+
+\subsubsection{Proxy contract}
+
+Proxy contracts play a pivotal role in the execution of user-signed transactions by utilizing 
+data previously saved by the proposers' data transaction. There are essentially two approaches 
+to invoke target contracts from proxy: through the use of \(delegatecall\) and \(call\). When 
+employing \(delegatecall\), the target contract is executed within the context of the proxy 
+contract, with the proxy credentials remaining unaltered. Conversely, the \(call\) method allows 
+the target contract to operate within its own context, while the sender credentials undergo a 
+transition from an externally owned account (EOA) to those of the proxy. The most important 
+credentials for such calls one should take into account are \(msg.sender\) and \(msg.value\).
+
+It is noteworthy that, as of the present, there exists no technical mechanism to invoke 
+functions from another contract while preserving the target context without making modifications 
+to the sender data. That means there must be made a choice between preserving own credentials or 
+the target context within a call.
+
+The code snippet below is an illustration of a proxy contract utilizing a delegatecall. In the 
+initial data transaction, information is stored in the internal storage under a specific key, 
+where the key may simply be a hash of the user's address. Before data is saved, a validation 
+check is performed to ascertain if the externally owned account (EOA) is a valid nil;'s validator 
+and possesses the authorization to save data. Subsequently, a user-signed transaction triggers 
+the "transfer" function. Upon retrieval of data from storage using the user's address, the 
+function initiates a delegatecall to the USDC contract. It is crucial to note that this call 
+does not alter the context of the target contract.
+
+\begin{verbatim}
+    contract USDC_proxy is IUSDC { 
+         ... <original usdc contract data fields> ...
+        mapping(bytes32 => bytes) input_storage;
+
+        //uint256 -- blockID after which the validator right expires.
+        // if < curBlockID -- update reverted
+        mapping (address => uint256) nil_validators;  
+
+        address usdc;
+
+        function upateData(bytes32 key, bytes calldata _input) public {
+            revert(ifUpdateNotAllower(msg.sender)); // Optionaly
+            input_storage[key] = _input;
+        }
+
+        function transfer() {
+            bytes memory raw_input = input_storage[keccak256(msg.sender)];
+            (... input ...) = parseBytes(raw_input);
+                    (bool success, bytes memory data) = usdc.delegatecall(
+            abi.encodeWithSignature("<abi>", ... input ...); // or call/staticcall
+        }
+    }
+\end{verbatim}
+
+
+
+\subsubsection{Tradeoffs}
+\begin{enumerate}
+    \item Potentially faster than on-demand schema, because you won't need to perform nil's 
+    double transaction;
+    \item More robust liveness guarantees as user is not involved;
+    \item Complex client -- it requires advanced CFP to precisely compute the number of extcall 
+    that will raise during execution;
+    \item Proxy contracts maintaining -- all proxy contracts will have to be properly managed to 
+    be up to date with relevant target addresses and validators;
+    \item Double Ethereum transactions -- for each call transaction, a dedicated data 
+    transaction is needed, which increases the final cost for users;
+    \item Proxy-contracts -- target contracts require the implementation of dedicated proxies, 
+    thereby introducing heightened maintenance and development expenses;
+    Utilizing any arbitrary Ethereum contract without a proxy is not feasible under this design;
+    \item Limited extcalls -- no way to utilize extcalls with branching, which limits 
+    development flexibility and comprehensiveness of solutions;
+    \item Credentials limitation -- any target contract whose logic is bound to \(msg.sender\) 
+    rather than \(tx.origin\) will not work properly;
+    \item Risks of malicious behavior -- as the raw transactions are publicly available, malicious
+    actors can submit them directly to Ethereum before the protocol commits it or sends data transactions.
+    Despite not providing the actor with direct income gain -- it has reputational and protocol risks. 
+
+\end{enumerate}

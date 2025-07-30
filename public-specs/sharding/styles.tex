@@ -1,0 +1,62 @@
+%%% Page align %%%
+\geometry{a4paper,top=2cm,bottom=2cm,left=3cm,right=2cm}
+
+%%%Encoding and fonts%%%
+
+
+%%% Paragraphs align %%%
+\sloppy
+\clubpenalty=10000
+\widowpenalty=10000	
+
+%%%Bibliography%%%
+\makeatletter
+\bibliographystyle{ieeetr}
+\makeatother
+
+%%%Images%%%
+\graphicspath{{images/}}
+
+%%% Hyperlinks colors %%%
+\definecolor{linkcolor}{rgb}{0.9,0,0}
+\definecolor{citecolor}{rgb}{0,0.6,0}
+\definecolor{urlcolor}{rgb}{0,0,1}
+\hypersetup{
+    colorlinks, linkcolor={linkcolor},
+    citecolor={citecolor}, urlcolor={urlcolor}
+}
+
+%%% Theorem styles definitions %%%
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+%%% FancyHDR styles definitions %%%
+\pagestyle{fancy} % All pages have headers and footers
+\fancyhead{} % Blank out the default header
+\fancyfoot{} % Blank out the default footer
+\fancyhead[C]{=nil;'s zkSharding for Ethereum} % Custom header text
+\fancyfoot[RO,LE]{\thepage} % Custom footer text
+
+\reversemarginpar % for correct TODO work
+
+% use arabic numbers in nested enum
+\renewcommand{\labelenumii}{\arabic{enumi}.\arabic{enumii}}
+\renewcommand{\labelenumiii}{\arabic{enumi}.\arabic{enumii}.\arabic{enumiii}}
+
+%\renewcommand{\todo}[5][4]{\ignorespaces}  %% uncomment this to hide all TODOs
+
+\newcommand{\nil}{\texttt{=nil;}\xspace}
+\newcommand{\protocol}{\texttt{=nil;} zkSharding\xspace}
+\newcommand{\evm}{\texttt{=EVM++;}\xspace}
+
+
+%% specific todo notes with authors
+\newcommand{\todois}[1]{\todo[author=Ilia S., color=Lavender]{#1}}
+\newcommand{\todoisinline}[1]{\todo[author=Ilia S., color=Lavender, inline]{#1}}
+
+\newcommand{\mainshard}{Consensus Shard\xspace}
+\newcommand{\colocate}{\cap}

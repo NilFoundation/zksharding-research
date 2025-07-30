@@ -1,0 +1,24 @@
+\section{Local Fee Model}
+\alex {Do we need more detail or any examples?}
+
+In zkSharding, gas price calculation follows a Local Fee Model at the shard level. Each shard maintains its own distinct base fee, designed to regulate gas demand and promote balanced load distribution across the network.
+
+\subsection{zkSharding Transaction Fee Mechanism}
+
+The zkSharding transaction fee mechanism consists of several key components:
+
+\begin{itemize}
+    \item \textbf{Shard-Specific Base Fees}: Each shard operates with its own independent base fee, enabling granular control over gas demand and encouraging an even workload across the network.
+
+    \item \textbf{Adjustment Mechanism}: The model incorporates a modified EIP-1559 base fee adjustment mechanism designed for quicker adjustments during periods of high congestion, enabling shards to dynamically adapt their base fees to prevailing network conditions. In addition to faster responsiveness, the mechanism allows greater flexibility around the target gas usage, aiming to enhance the predictability of cross-shard transactions and transaction fees when the system is in a balanced state.
+
+    \item \textbf{Fee Credit}: To address the variation in base fee levels across shards and the complexity of tracking gas usage for cross-shard transactions, particularly in ensuring messages adhere to gas limit constraints, we use the Fee Credit approach. This Fee Credit is set at transaction creation and is a result of:  \( \text{GasLimit} \times \text{maxFeePerGas} \).
+    
+    \item \textbf{Propagating maxFeePerGas and maxPriorityFeePerGas values}: Although transactions pay for gas using the Fee Credit, we propagate these two fields to maintain a familiar fee-charging experience. This approach prevents validators from always claiming the full maxPriorityFeePerGas by deriving an effectivePriorityFee. Additionally, it allows users to set an explicit cap on the maximum price they are willing to pay per gas unit, ensuring greater control over transaction costs.
+    
+    \item \textbf{Fee Credit Forwarding}: As transactions can create new cross-shard transactions we introduce Fee Credit forwarding. \alex {More details needed about forwarding?}
+    
+    \item \textbf{EMA-Based Smoothing}: To address volatility in L1 blob base fees, the model uses an Exponential Moving Average (EMA). This smooths out fee spikes by distributing their impact over time, preventing sudden cost increases for users.
+
+    \item \textbf{Transformation of L1 Fees into Gas}: L1 fees, such as those for data availability and proof verification, are converted into gas units added to the recomended gasLimit to maintain compatibility with Ethereum’s existing tools and frameworks.  These gas units are excluded from the base fee adjustment mechanism, ensuring a clear separation between L1 fee and L2 fee dynamics.
+\end{itemize}

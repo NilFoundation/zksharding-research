@@ -1,0 +1,87 @@
+\section{Preliminaries}
+\label{section:preliminaries}
+
+\paragraph{Network Model.}
+The system operates under a \textit{partial synchrony} model.
+In this model, after an unknown Global Stabilization Time (GST), 
+ the network achieves synchrony with a known maximum delay $\Delta$.
+This approach recognizes that synchrony might be temporarily disrupted, 
+ potentially due to attacks, but it is expected to eventually stabilize. 
+ A distinction is made between the maximal network delay $\Delta$ post-GST 
+  for worst-case scenarios and an actual network delay $\delta$ 
+  for average or optimistic case scenarios.
+
+\paragraph{Adversary Model.}
+It is assumed that up to $f$ of the shard's committee members are malicious.
+Hence, the committee size $n$ is at least $3f+1$.
+The adversary can diverge from the specified protocol in any way.
+
+\paragraph{Protocol Properties.}
+A protocol has \emph{optimistic responsiveness} if in an optimistic case it takes 
+ $O(\delta)$ to make a decision.
+In other words, protocol operates at the speed of the network.
+
+A protocol is considered \emph{safe} if at all times, for every pair of correct nodes, 
+ the output log of one is a prefix of the other.
+
+A protocol provides \emph{liveness} if, after GST, all non-faulty nodes repeatedly output growing logs.
+
+\paragraph{Consensus Algorithm Background.}
+
+A \emph{view} in consensus protocols refers to a specific configuration 
+ or state of the network.
+The protocol operates in a sequence of \emph{views}, 
+ where each view has a designated leader.
+
+The protocol is decomposed into two subprotocols:
+  \emph{view-synchronization} and \emph{in-view operation}. 
+The view-synchronization subprotocol, also called \emph{pacemaker},
+ is used by parties to enter a new view 
+ and spend a certain amount of time in the view.
+The \emph{in-view operation} subprotocol is used by parties to commit a block.
+This decomposition, which is used by HotStuff \cite{HotStuff} and its successors, 
+ allows us to analyze \emph{safety} and \emph{liveness} properties of the protocol separately.
+
+\paragraph{Proposer-Builder Separation (PBS).}
+ This framework divides the role of single validator into two roles: proposer and builder. 
+ Block builders are responsible for constructing the actual contents of a block, including 
+ ordering and veriffication transactions. Block proposers are responsible for proposing 
+ (validation and propogation) new blocks to be added to the network. 
+
+ \subsection{Multi-Threshold BFT}
+ \label{section:preliminaries:multi-threshold-bft}
+ 
+ It is expected to have in partially synchronous systems more emphasis on safety than liveness:
+ The system is designed to be safe always, while liveness is guaranteed only after a certain time.
+ Moreover, both attacks on safety and liveness require committee reformations, but the former also requires a state reformation.
+ The inconvenience is that popular BFT SMR protocols, such as PBFT \cite{PBFT}, Tendermint \cite{Tendermint}, and HotStuff \cite{HotStuff},
+ have the same threshold for safety and liveness, a third of the committee size.
+ However, it is possible to decouple the safety and liveness thresholds \cite{MultiThresholdBFT}.
+This section describes some properties of the Multi-Threshold BFT protocols.
+   
+ The analysis of the work of \cite{MultiThresholdBFT} provides a framework 
+  to design and update protocols to have optimal safety a
+  nd liveness thresholds in both partially synchronous and synchronous settings. 
+For the purposes of this paper, attention is focused on the partially synchronous setting, 
+and a brief summary of the relevant results are provided.
+ 
+ \begin{itemize}
+     \item In the partially synchronous model there exists a BFT SMR protocol with a \emph{safety threshold} of \(f_s \geq n/3 \) and a \emph{liveness threshold} of \(f_l\), that
+     must satisfy just the following condition:
+     $$
+     f_l \leq \frac{n - f_s}{2}.
+     $$
+     \item The protocol is based on a Sync HotStuff protocol \cite{SyncHotStuff}, therefore it has the same 2-vote structure.
+     There are two main differences:
+     \begin{itemize}
+         \item Different quorum size, necessary to create a Quorum Certificate, which is equal to \(n - f_l\).
+         \item The protocol is not optimistically responsive (however, for a local consensus, where committee size is not large, it should not become a problem, based on the performance evaluation in \cite{SyncHotStuff}).
+     \end{itemize}
+ \end{itemize}
+ 
+ \begin{remark}
+     By giving up responsiveness, the protocol can become significantly more safe. For example, the liveness threshold can be set to $n/4$,
+     while having a safety threshold of $n/2$, exactly like in the synchronous setting.
+     This improvement is crucial for the sharding protocol, where shards' safety threshold should be strictly greater than the safety threshold of the whole cluster.
+     It is discussed in more detail in Section~\ref{section:sharding}.
+ \end{remark}

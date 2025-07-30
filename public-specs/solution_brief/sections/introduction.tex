@@ -1,0 +1,53 @@
+\section{Overview}
+\label{sec:introduction}
+
+\todoisinline{We need additional info on: async programming model, refund
+	mechanism \handan{DONE: I integrated async model to in Section
+		\ref{sec:introduction}, \ref{sec:executionshards} and
+		\ref{sec:txlifecycle}. I also mention failed tx when describing the block
+		creation in Section \ref{sec:txlifecycle}.}}
+
+=nil;’s zkSharding introduces a scalable sharded-zkRollup
+solution for Ethereum that leverages
+sharding and SNARKs to address the network’s scalability challenges while
+maintaining decentralization and security. Unlike conventional rollups,
+zkSharding partitions the network into parallel execution shards, where
+each shard processes transactions independently while maintaining unified
+liquidity and state. The contracts deployed on these shards communicate
+\emph{asynchronously} \cite{asyncNil}, enabling them to send messages to
+contracts on other shards without pausing execution to await the message
+results.
+This approach allows zkSharding to achieve
+significantly higher throughput without fragmenting liquidity or
+increasing the complexity of cross-shard interactions. In this document,
+we explain how we achieve these objectives in detail.
+
+At a high level, zkSharding is composed of three interconnected
+components. These components are not structured as hierarchical layers,
+but rather work collaboratively, each serving a distinct role:
+
+\begin{enumerate}
+	\item\textbf{ L1 (Ethereum):} Acts as the settlement and data
+	availability layer. Shards submit aggregated state proofs and data
+	commitments
+	here for finalization and security.
+	\item\textbf{ Main Shard:} Coordinates execution shards, manages
+	cross-shard communication, and ensures system-wide state
+	synchronization
+	and integrity.
+	\item \textbf{Execution Shards:} Handle user transactions and
+	      smart contracts in parallel, each maintaining its own state
+	      and processing
+	      a subset of transactions.
+\end{enumerate}
+
+
+zkSharding’s primary objective is to enable scalable computation within a
+decentralized framework. By dividing workloads across multiple shards,
+zkSharding increases transaction throughput without centralizing control.
+L1 acts as an additional layer of security by verifying zkSharding’s state
+transition validity through submitted validity proofs. These proofs allow
+zkSharding to integrate with Ethereum’s canonical blockchain. In this way,
+it ensures efficiency and security while preserving decentralization.
+Next, we give an overview of the role of L1 in zkSharding system before
+diving into the design of zkSharding (See Figure \ref{fig:blackbox}).

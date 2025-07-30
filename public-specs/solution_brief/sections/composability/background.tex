@@ -1,0 +1,165 @@
+\section{Background}
+\label{section:background}
+
+\renewcommand{\ttdefault}{txtt}
+
+\subsection{Notations} 
+\begin{enumerate}
+    \item Tx -- native network transaction;
+    \item Txe -- transaction, or with at least one external call, 
+    or with at least one Ethereum transaction, or with a target to Ethereum address;
+    \item H(d) -- digest function of input "d";
+    \item Pb -- public key;
+    \item Pk -- private key.
+\end{enumerate}
+
+
+\subsection{External call}
+The external call, referred to as "extcall" denotes the segment of code wherein 
+an invoke to the Ethereum application occurs. This invocation can transpire explicitly 
+or implicitly through a function containing the "extcall" keyword. Various methods 
+exist to initiate it, but the one that is both straightforward and compatible 
+with Ethereum Virtual Machine (EVM) bytecode involves utilizing an "unaligned address" 
+akin to the approach employed in RISC-V and ARM architectures with Thumb support. 
+
+By default, function addresses in Ethereum are represented as 20 bytes in little-endian 
+format. Notably, the 21st byte can be designated with a value of 1 to signify the occurrence 
+of an external call. This adjustment doesn't necessitate the introduction 
+of new opcodes; rather, it requires processing logic within the Virtual Machine (VM). 
+To illustrate, consider the following example code:
+
+\begin{alltt}
+    
+function someFunction\(\) public extcall \{
+    // 20-bytes USDC contract address on Ethereum
+    IUSDC usdcContractOnEth = 0x2200000000000000000000000000000000000011;
+    // as it's excall compiler will set 21-bytes address:
+    // 0x\textbf{01}2200000000000000000000000000000000000011
+    usdcContractOnEth.unlock(....); // extcall 1
+    usdcContractOnEth.transfer(....); // excall 2
+\}
+
+interface IUSDC \{
+    function unlock() extern extcall; // extcall function keyword
+\}
+\end{alltt}
+
+This capability is feasible and aligns with EVM principles by storing data for 
+the call opcode on a 32-byte size stack. In this scenario, when the EVM casts to 
+"address," it effortlessly disregards the surplus data. For VMs equipped with extcall 
+support, distinguishing the call type becomes straightforward by examining the address 
+using: \( addr \land 2^{161} \). To convert extcall address to a normal 20-byte address 
+one can perform the following operation: 
+\( addr_{target} = addr_{extcall} \land (2^{161} - 1) \).
+
+This approach doesn't mandate the introduction of any supplementary opcodes or alterations 
+in functionality. It ensures seamless compatibility with existing EVM bytecode. 
+
+
+\subsection{External transaction}
+
+There are three criteria by which a transaction on nil;'s cluster should be marked as external:
+\begin{enumerate}
+    \item It has at least one user's signed Ethereum transaction in the "data" field. 
+    They can be several and the order will be preserved by batching them.
+    It must be mentioned that 
+    \( \forall Tx_i, Tx_j => i = j + 1, Tx_{i_{nonce}} = Tx_{j_{nonce}} + 1  \). 
+    Otherwise, the transaction will be considered invalid.
+    \item The transaction contains a call to the function marked with "extcall".
+    \item The target address is the Ethereum address. 
+\end{enumerate}
+
+It is noteworthy to emphasize that when a call is made to an extcall function, the callee 
+should be explicitly marked as an extcall as well, even if the execution path  might not 
+eventually trigger it. This is particularly relevant in scenarios where an external function 
+is encapsulated within a branch statement that evaluates to false during execution.
+
+
+\subsection{Composability with Ethereum}
+
+Ethereum, as designed, lacks inherent support for write composability with L2 solutions and 
+doesn't readily offer technical avenues for seamless integration. A pragmatic and feasible 
+strategy involves the explicit emission of Ethereum transactions, generating them explicitly 
+at the protocol level.
+
+However, undertaking this approach presents several challenges that necessitate resolution. 
+Among these challenges, one of the most formidable is the handling of 
+Ethereum Externally Owned Account (EOA) signatures. 
+
+\subsection{Atomicity}
+
+One of the fundamental attributes in traditional databases is the atomicity of a transaction, 
+ensuring that the system is in a complete and consistent state either after the full 
+transaction is applied or when it is not applied. While write composability can assure local 
+atomicity within a given context, achieving global atomicity faces challenges in the Ethereum 
+network due to the asynchronous nature of external transactions.
+
+The asynchronous implies that immediate feedback is unavailable, necessitating the adoption of 
+pull or callback approaches for transaction status confirmation and result, while execution of 
+the transaction continues without considering external transaction status. It's crucial to 
+acknowledge that ensuring global atomicity in such an environment is complex. While there exists 
+an approach rooted in deferred calls to secure global atomicity, its practical implementation 
+is often both expensive and challenging.
+
+
+\subsection{Ethereum authentication schema}
+Ethereum employs the ECDSA secp256k1 standard signature for transaction verification, 
+which consists of two numbers: (r, s). This signature, when paired with the public key 
+and message, is required for signature verification. Notably, the ECDSA scheme possesses 
+the unique property to reconstruct the public key from the values (r, s). 
+
+In the Ethereum context, when referencing msg.sender in EVM, it doesn't rely on the 
+"from" field of the transaction or the direct use of the public key hash. Instead, it performs 
+a process of public key recovery from the signature. This involves verifying the signature, 
+reconstructing the public key, and subsequently deriving the address by hashing the public key. 
+The resulting address is then stored in \(tx.origin\) and \(msg.sender\) by default. Note 
+that we do not cover the aspects of parameter $v$ in secp256v1 as it's not important for the schema.
+In Algorithm 1 the detailed structure of EAS is presented.
+
+This method dictates that an Ethereum transaction must be signed with the user's private key 
+for the process to be successful. That narrows the potential set of viable solutions. 
+Consequently, the reliance on the user's private key for transaction signing is a fundamental 
+requirement for the write composability.
+
+\begin{algorithm}[H]
+    \caption{High-level Ethereum Authentication Schema (EAS)}
+    \label{EAS}
+    \begin{enumerate}
+        \item Alice has ${EOA}$ with dedicated $P_k$ and $P_b$ as per ${secp256k1}$ (defines $G$, $n$, $m$); 
+        \item Alice creates transaction with the target contract she wants to invoke;  
+        \item EIP-155 specifies the content that should be signed:
+        (\(nonce, gasprice, startgas, to, value, data, chainid, 0, 0\));
+        *last two zeros -- $(r, s)$ pair that not yet defined on the current step
+        \item Signing process:
+        \begin{enumerate}
+            \item h = H($nonce$ || $gasprice$ || $startgas$ || $to$ || $value$ || $data$ || $chainid$ || $0$ || $0$);
+            \item random $k$ selected;
+            \item $r = (G * k)_x \% n$;
+            \item $s = (h + r * P_k)*k^{-1} \% n$;
+            \item Output: $(r, s)$.
+        \end{enumerate} 
+        \item Bob restore Alice's public key: 
+        \begin{enumerate}
+            \item Input: $T_{x_A}$ => ($nonce$, $gasprice$, $startgas$, $to$, $value$, $data$, $chainid$, $r$, $s$); 
+            \item h = H($nonce$ || $gasprice$ || $startgas$ || $to$ || $value$ || $data$ || $chainid$ || $0$ || $0$);
+            \item secp256k1 curve: $R_y = TonelliShanks(r^3 + 7, m)$;
+            \item $R = (r, R_y)$;
+            \item $t_1 = -h * r^{-1} \% n$;
+            \item $t_2 = s * r^{-1} \% n$;
+            \item $P_b = (G * t_1 + R * t_2) \% m$;
+        \end{enumerate}
+        \item Bob verifies signature: 
+        \begin{enumerate}
+            \item $u = h * s^{-1} \% n$;
+            \item $v = r * s^{-1} \% n$;
+            \item $C = (G * u + P_b * v) \% m$;
+            \item $C.x == r$;
+        \end{enumerate}
+        \item Bob restores Alice's Ethereum address:
+        \begin{enumerate}
+            \item $Addr = keccak256(P_b)$;
+            \item In EVM: $msg.sender = address(LE(Addr[0:20]))$;
+        \end{enumerate}
+    \end{enumerate}
+\end{algorithm}
+

@@ -1,0 +1,160 @@
+\section{State Transition Proofs}
+\label{section:zk}
+
+A \textit{state transition proof} is a cryptographic construct
+ that validates a state transition from $S_i$ to $S_{i+1}$
+ due to one or more transactions, 
+ without the need to rerun these transactions.
+
+The formal representation of a state transition proof
+ can be defined as a function $\mathcal{F}$:
+
+\begin{equation}
+\label{equation:state-transition}
+    \mathcal{F}(S_i, T, S_{i+1}, PI) \rightarrow (\pi)
+\end{equation}
+
+where:
+\begin{itemize}
+  \item $S_i$ is the state before the transactions.
+  \item $T$ represents the transaction or batch of transactions.
+  \item $S_{i+1}$ is the state resulting from applying the transactions.
+  \item $PI = [C_T, C_{S_i}, C_{S_{i + 1}}]$ is a public input
+   with a succinct representation of $S_i$, $S_{i+1}$, and $T$.
+  \item $\pi$ is the zero-knowledge proof verifying the correctness of the transition
+   from $S_i$ to $S_{i+1}$ without knowing $T$.
+\end{itemize}
+
+This proof $\pi$ is subsequently verified by a verifier function $\mathcal{V}$:
+
+\[
+\mathcal{V}(PI, \pi) \rightarrow \{\text{true, if the transition is valid; false, otherwise}\}
+\]
+
+These definitions can be applied both to the zkSharding whole system
+ and to particular shards.
+In the first case, $S_i$ represents the "world" state of zkSharding and includes whole sharded database.
+In the second case, $S_i$ represents the state of the particular shard.
+However, a more precise definition of $\mathcal{F}$ for zkSharding's world state can be provided. 
+For $k$ shards, the state transition proof's formal representation is as follows:
+
+\begin{equation}
+\label{equation:global-state-transition}
+    \mathcal{F}(S^0_i, \dots, S^{k-1}_i, S^0_{i+1}, \dots, S^{k-1}_{i+1}, T^0, \dots, T^{k-1}, PI^0, \dots, PI^{k-1}) \rightarrow (\pi)  
+\end{equation}
+
+There are two issues that prevent the implementation of state transition proof generation by a single validator node:
+\begin{itemize}
+    \item State transition proofs are computationally intensive tasks that take time. The larger the state change, the more time it takes.
+    \item To provide a proof for the whole zkSharding state, the prover must obtain the state of the entire sharded system.
+\end{itemize}
+
+For these reasons, the function \(\mathcal{F}\) is implemented as a multi-party protocol. Participants of the protocol are called \textit{proof producers}.
+
+\subsection{Proof Generation Protocol}
+
+Define three types of proofs for the protocol:
+\begin{itemize}
+    \item $\pi_S$ is a state transition proof defined by Equation \ref{equation:state-transition}.
+    \item $\pi_A$ is an aggregation proof that aggregates two state transition or aggregation proofs:
+    \[ \mathcal{F}_A(\pi_{1}, \pi_{2}) \rightarrow \pi_A \]
+    \item $\pi_O$ is an output proof defined by the function:
+    \[ \mathcal{F}_O(\pi_{A, 1}, \pi_{A, 2}) \rightarrow \pi_O\]
+\end{itemize}
+
+The output proof is required for cases 
+when proof verification costs on the execution layer 
+depend on the proof system parameters. 
+For example, KZG-based proofs verification is generally cheaper than FRI-based ones on the Ethereum Virtual Machine.
+Note that $\mathcal{F}_O$ is required only for cost optimizations 
+ and may be represented as $\mathcal{F}_A$ for the simplicity of implementation.
+
+Now, equation \ref{equation:state-transition} can be represented as:
+\[
+    \mathcal{F} = \mathcal{F}_O\left(
+        \mathcal{F}^{\log{k} - 1}_A\left(
+            \mathcal{F}_A(\mathcal{F}_S(\ldots)), \mathcal{F}_A(\mathcal{F}_S(\ldots))\right), 
+        \mathcal{F}^{\log{k} - 1}_A\left(
+            \mathcal{F}_A(\mathcal{F}_S(\ldots)), \mathcal{F}_A(\mathcal{F}_S(\ldots))\right)
+            \right),
+\]
+
+The \textit{Proof Distribution Protocol} (or \textit{PDP}) 
+ is responsible for assigning proof producers to particular \textit{slots}.
+A \textit{slot} is a task for generating one specific proof with defined input.
+Separating the proof aggregation algorithm from the proof producer assignment logic
+ allows for independent updates of both algorithms.
+
+\begin{algorithm}
+    \caption{Proof Distribution Protocol: Slots Assignment}
+\begin{enumerate}
+    \item An event occurs: a new block is sent to the \mainshard. 
+    \item A part of the block reward is locked as a reward for proof producers. \
+    The part is calculated as the sum of rewards for each slot related to the block, 
+     with slot rewards defined by adjustable protocol parameters.  
+    \item PDP defines the list of open slots, each defined as follows:
+        \begin{verbatim}
+            slot_id: uint
+            shard_id: uint
+            block_seq_no: uint
+            batch_seq_no: uint
+            proof_type: enum
+            max_fee: float
+        \end{verbatim}
+    \item Proof producers provide proofs for the slots, 
+     requesting any fee lower or equal to \texttt{max\_fee}. 
+     While multiple proof producers can provide the proof for the same slot, 
+     only the proof with the lowest fee is chosen. 
+    \item The rewards are paid to proof producers according to the requested fee. 
+\end{enumerate}
+\end{algorithm}
+
+\begin{algorithm}
+\caption{Proof Distribution Protocol: Intra-shard State Transition}
+\label{algo:slot-processing}
+\begin{enumerate}
+    \item Validators confirm the block $B$ that contains a set of transactions $T$.
+    \item Based on the protocol parameters, 
+     $T$ is split into $k$ batches $[T_0, \ldots, T_{k - 1}]$. 
+    \item \label{step:slot-processing:pi-s}
+     PDP opens $k$ slots for $\pi_S$ proofs for the given batches.
+    \item \label{step:slot-processing:pi-a} 
+     PDP consequently opens $k - 1$ slots for $\pi_A$
+     to aggregate the $k$ $\pi_S$ proofs into two proofs as a binary tree.
+    \item PDP opens $1$ slot for $\pi_O$ proof.
+\end{enumerate}
+\end{algorithm}
+
+\begin{remark}
+    Step \ref{step:slot-processing:pi-a} of Algorithm \ref{algo:slot-processing} 
+     can start as soon as at least two proofs are generated at Step \ref{step:slot-processing:pi-s}. 
+     For clarity, this is omitted in the algorithm description.
+\end{remark}
+
+\subsubsection{Global State Transition Proof}
+
+Note that Equation \ref{equation:global-state-transition} 
+ can be represented as:
+
+\[
+    \mathcal{F}(S^0_i, S^0_{i + 1}, \overline{T}, \overline{PI}),
+\]
+
+where $0$ is the sequence number of the \mainshard, 
+ and $\overline{T}, \overline{PI}$ contain data about transactions 
+ that call the verification function $\mathcal{V}(PI^i, \pi^i)$
+ for $i \in [1, k]$.
+
+In other words, the global state transition proof can be obtained from 
+ the \mainshard's state transition proof, 
+ with state differences that include verification of other shards' state transition proofs. 
+Thus, the algorithm is as follows:
+\begin{enumerate}
+    \item Proof producers generate $\pi^i_O$ for each execution shard. 
+    \item Validators send $\pi^i_O$ proofs to the \mainshard.
+    \item The \mainshard verifies the proofs. 
+    \item Proof producers generate $\pi_O$ for the \mainshard.
+\end{enumerate}
+
+Later, the global state transition proof is transferred to Layer 1
+ by the Synchronization Committee as described in Section \ref{section:data-availability:synchronization-on-l1}.

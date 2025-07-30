@@ -1,0 +1,31 @@
+\input{packages}
+\input{styles}
+\input{commands}
+\input{title}
+\def\short#1#2{#1} %to make shorter version of the document, use #1, otherwise #2
+\newcommand{\handan}[1]{{\color{red}\textsc{Handan:} #1}}
+\newcommand{\alex}[1]{{\color{blue}\textsc{Aleksandar:} #1}}
+\begin{document}
+
+% Print the title
+\maketitle
+
+%\input{contents}
+
+\input{sections/introduction}
+\input{sections/L1connection}
+\input{sections/architecture}
+\input{sections/txLifecycle}
+\input{sections/zkp}
+\input{sections/feemodel}
+\input{sections/conclusion}
+
+\input{references}
+
+\appendix
+
+% \input{appendix/pacemaker}
+% \input{appendix/leader_election}
+%-------------------------------------------------------------------------------
+
+\end{document}

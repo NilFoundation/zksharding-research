@@ -1,0 +1,63 @@
+\section{External transactions associated risks}
+
+For any novel and unique solution, a crucial aspect involves conducting a thorough risk 
+assessment, which should be articulated alongside the proposed solutions. In this section, we 
+delve into some key risks that demand consideration concerning the technology.
+
+
+\subsection{Inconsistency of Ethereum transactions}
+
+The term inconsistency means the conflicts of transactions on the L1 network from the same user. 
+The risk of inconsistency among Ethereum transactions is substantial, primarily because proposers 
+face challenges in accurately determining the latest nonce of an externally owned account (EOA). 
+The options available, such as obtaining it from an internal Ethereum light client or including 
+it in the nil's transaction, both carry inherent risks. Users must be mindful of providing the 
+most up-to-date nonce, and they must refrain from committing transactions on Ethereum before 
+transactions from nil;'s cluster are submitted to L1. Failing to observe this sequence may lead 
+to inconsistencies in transactions.
+
+Furthermore, in both models, users are unable to assess the exact number of Ethereum 
+transactions that will be submitted to L1 from L2 with their signature, making it unpredictable 
+to determine the nonce value for the standalone user transaction in advance. The occurrence of 
+duplicated nonces is problematic, as a transaction with identical or lower nonce is deemed 
+incorrect and subsequently not processed. This becomes especially precarious when the rejected 
+transaction is one originating from the cluster.
+
+
+\subsection{High final cost for users}
+
+The ultimate cost of Ethereum transactions can become a significant financial loss for users, 
+primarily due to the necessity of setting a gas price higher than the current on-market rate. 
+This precaution is essential because the sequencer may decline to include the transaction in a 
+block, risking rejection from the builder if the market price rises more than one is set in 
+a transaction. As the delay from signing Ethereum transaction to pushing it to the builder may 
+be long enough, a higher gas price needs to be established in advance, thereby inflating the 
+final cost for users. This cost increese is particularly high in the preprocessing model, where 
+Ethereum transactions are duplicated.
+
+
+\subsection{Uncomputable timeframes}
+
+In both design cases, the timeframe between sending a nil's transaction and making a call on the 
+Ethereum target application is entirely unpredictable. Several significant factors contribute to 
+this uncertainty. Firstly, batched transactions are not guaranteed to be included in the 
+subsequent sequencer block. Secondly, the timing of when a block will be accepted by the relayer 
+or builder (depending on the sequencer model) is uncertain. In the case of the on-demand design, 
+this timeframe also encompasses the time required for user signing and transaction verification.
+
+These factors collectively imply that despite the relative predictability of the finalization of 
+the cluster, the finalization of external transactions is unfeasible to precompute.
+
+
+\subsection{Unrevertable transactions}
+
+In the current design, achieving full atomicity is not feasible. Consequently, there exists a 
+risk wherein the nil;'s cluster state may undergo reversion while the transaction on Ethereum 
+successfully executes. This vulnerability is particularly critical in the preprocess model, 
+where a validator could potentially exploit maliciousdata as input for a user transaction signed 
+in advance. Even if the state of the nil;'s cluster is reverted, the malitius data and call 
+transactions on L1 can still proceed successfully, posing a substantial risk to users, 
+especially in scenarios where the execution of a malicious transaction on Ethereum prevails over 
+slashing risks. The on-demand model mitigates this vulnerability by allowing users to await 
+block finalization on the cluster before signing the proposed transaction, thus circumventing 
+the mentioned pitfall.

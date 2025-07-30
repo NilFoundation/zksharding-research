@@ -1,0 +1,43 @@
+\section{Pacemaker Subprotocol}
+\label{appendix:pacemaker}
+
+\todo[inline]{committee changes and pacemaker synchronization with new committees are yet to be detailed}
+\todo[inline]{add fail scenarios and timeouts description}
+
+Here we describe the pacemaker subprotocol, which is responsible liveness of the system.
+This protocol guarantees that the system makes progress, i.e., it guarantees that the honest nodes will
+eventually enter the same view with the correct leader for a sufficient amount of time.
+
+We provide a high-level description of the simplified Version of Naor-Keidar protocol, called Cogsworth \cite{Cogsworth}, in Algorithm \ref{alg:pacemaker-protocol}.
+
+
+\SetKwInput{KwWish}{WISH}
+\SetKwInput{KwReady}{READY}
+\SetKwInput{KwAdvance}{ADVANCE}
+
+\begin{algorithm}[H]
+    \DontPrintSemicolon
+    \SetAlgoLined
+    \caption{Pacemaker Protocol (Cogsworth)}
+    \label{alg:pacemaker-protocol}
+    \SetKwProg{Step}{Step}{:}{}
+    \Step{Wish}{
+        \textbf{Non-Leader:} If there is no progress, send the leader of view \( r+1 \) a message \( \texttt{(WISH, r+1)} \).
+
+        \textbf{Leader:} Collects \( f+1 \) \( \texttt{(WISH, r+1)} \) messages and broadcasts an aggregate.
+    }
+    \Step{Ready}{
+        % Byzantyne reliable broadcast is just broadcast, collect 2f+1 votes and broadcast again
+        Upon receiving \texttt{WISH} aggregate from any leader, it responds with \( \texttt{(READY, r+1)} \).\;
+
+        Upon timeout, it forwards the \texttt{WISH} aggregate to fallback leaders of views \( r+2, \ldots, r+f+1 \), one by one, to collect READY responses, until there is progress.
+    }
+    % advance
+    %  - C(C(B)) is collected, then enter the next view (optimistic case)
+    \Step{Advance}{
+        \textbf{Leader:} \( 2f+1 \) \( \texttt{(READY, r+1)} \) messages and broadcasts a \texttt{READY} aggregate.\;
+        \textbf{Non-Leader:} Upon receiving a \texttt{READY} aggregate from any leader, it enters view \( r+1 \).
+        Upon timeout, it forwards the \texttt{WISH} aggregate to fallback leaders of views \( r+2, \ldots, r+f+1 \),
+        one by one, to collect \texttt{READY} responses, until there is progress.
+    }
+\end{algorithm}

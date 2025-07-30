@@ -1,0 +1,423 @@
+\section{Proposal}
+\label{section:proposal}
+
+\subsection{Dynamic Sharding}
+\label{section:sharding}
+
+Considerations concerning application-level Ethereum sharding (via L2s, L3s, L4s, etc.) 
+gave rise to the concept of protocol modularity, encapsulated by the principle: 
+one application, one database. Initially, this concept was perceived to possess 
+the potential to augment the blockspace of Ethereum for specific applications. 
+However, concurrent with its potential advantages, it also introduced several 
+challenges:
+\begin{enumerate}
+    \item \textbf{Fragmented Liquidity:} Undermines the efficiency and viability 
+        of applications. The currency presented on one application cannot be used 
+        with another without bridging.
+    \item \textbf{Security:} Compromised security due to fragmentation, as 
+        inter-application interactions now necessitate reliance on various bridges.
+        Although zkBridges offer a robust solution, they are not feasible for 
+        hundreds of distinct applications.
+    \item \textbf{Efficiency:} Decreased efficiency in cross-application 
+        interactions, given that each bridge interaction entails additional fees.
+    \item \textbf{Reduced Throughput:} As interactions between disparate 
+        applications demand the use of bridges. These bridges introduce added 
+        latency and affect the overall transactions per second ratio.
+\end{enumerate}
+
+As detailed in subsequent sections, the sharding approach addresses these challenges. 
+Each shard interacts with others within the framework of a unified protocol,
+ensuring seamless data access without the need for dedicated bridges between shards.
+
+\texttt{=nil;} introduces a notion of protocol-level enshrined sharding for 
+byzantine fault-tolerant environment-deployed distributed databases (in particular 
+for Ethereum). 
+
+In the subsequent sections, we elaborate the foundational concepts and components of \protocol.
+
+\subsubsection{Primary Shard}
+
+The first shard, known as the "primary shard," holds essential data about 
+the protocol's consensus and its current parameters. It also contains 
+data about other shards, 
+and the hashes of the most recent replication packets (blocks) 
+from all shards. In essence, the main shard serves a dual purpose:
+\begin{itemize}
+    \item It sets the protocol's rules and parameters.
+    \item It ensures synchronization across all other shards,
+        including verifying state transition proofs from these shards.
+\end{itemize}
+
+\subsubsection{Shards}
+First, we define a table (account) as a minimal data unit from the sharding 
+algorithm perspective. An account is characterized by its address (public key) 
+and its associated source code. Notably, there's no distinction between user 
+wallets and other applications. 
+
+Secondary shards handle user transaction processing. Each of these shards manages 
+a subset of tables (accounts), defined by the deterministic function 
+$F_S: (pk, M_{shards}) \to id_{shard}$.
+In this context, $pk$ represents the account's public key, 
+while $M_{shards}$ is shards history and metadata stored in the main shard. 
+
+Every shard is maintained by a specific group of validators (\textit{committee}). 
+These validators run a "local" consensus algorithm to ensure consistency in the 
+shard's state. 
+
+In accordance with parameters outlined in the main shard, each individual shard 
+has a maximum replication packet capacity. Dynamic sharding behavior is influenced 
+by two events:
+\begin{itemize}
+    \item \textit{Split Conditions are met}: 
+        If, during the previous $N$ replication cycles, a shard's block occupancy 
+        approaches its capacity, then the shard is split into two shards. 
+        The exact values of $N$ and the fullness threshold 
+        are defined by the protocol's parameters.
+    \item \textit{Merge Conditions are met}: 
+        Conversely, if during the last $N$ replication cycles, the replication
+        packet occupancy of two shards remains substantially below capacity 
+        (with at least half the block remaining vacant), then a merge of the 
+        two shards is initiated.
+\end{itemize}
+
+\subsubsection{Cross-Shard Communication}
+\label{section:cross-shard}
+
+As previously highlighted, all accounts are distributed among shards. 
+At an initial glance, this might seem similar to the data fragmentation issue 
+found in the application-specific rollups approach. 
+However, the key difference is in how cross-shard communication is handled: 
+it's integrated directly into the overall protocol, 
+rather than being managed by separate bridges. 
+
+Each committee has additional tasks beyond just maintaining their shard. 
+They are responsible for tracking a specific type of events, namely cross-shard 
+messages, within \textit{near} shards. Near shards are determined based on the 
+Hamming distance in shard identifiers. 
+
+Additionally, it's possible to provide a fraud proof for not relaying a 
+cross-shard transaction. As a result, validators who ignore this responsibility 
+can be slashed.
+
+\subsubsection{Colocation}
+\label{setion:colocation}
+
+Cross-shard communication might extend the time needed to achieve outcomes 
+reliant on a range of applications located on different shards. 
+For scenarios demanding the swiftest possible transaction processing (aka
+increased consistency), the protocol incorporates a colocation technique. 
+
+Colocation ensures that two accounts $\{pk_1, pk_2\}$ are consistently 
+located within the same shard. 
+In other words, $F_S(pk_1, M_{shards}) = F_S(pk_2, M_{shards})$ for every 
+possible value of $M_{shards}$.
+%  \todo[inline]{Could we provide a target for the "local" vs "cross-shard" transactions ratio here? Or may be tell a little bit more about important cases, where colocation is absolutely necessary and be designed for? S.K.}
+
+\subsection{\evm}
+\label{section:evm}
+
+\evm is an EVM-based virtual machine, enhanced for more efficient execution 
+of general-purpose algorithms. It's tailored for optimized state transition 
+proof generation through zkLLVM.
+
+The design of the virtual machine encompasses three core properties:
+\begin{itemize}
+    \item Binary compatibility with original EVM applications. 
+        This means that any EVM applications input into \evm produces 
+        an output state identical to one executed on an EVM machine.
+    \item Execution capability for general-purpose C++/Rust code.
+        This allows to build applications that usually cannot be deployed
+        on blockchain, such as shared sequencers. 
+    \item Efficient state transition proof generation.
+\end{itemize}
+
+To achieve the first property, \evm extends 
+the basic EVM architecture and its implementation. 
+For example, the opcodes in \evm form a superset of those in EVM.
+
+Efficiency in general-purpose C++ code execution is realized via:
+\begin{enumerate}
+    \item Opcodes for reading and writing memory blocks 
+        smaller than 256 bits, coupled with the introduction of new integer types. 
+        This adjustment reduces the overhead tied to using 
+        exclusively 256-bit words in general-purpose programs.
+    \item Reducing certain EVM stack limitations:
+        \begin{itemize}
+            \item Infinite stack depth, with a free stack depth limit set at 1024 elements. 
+                When this limit is exceeded, an additional 
+                1024-element memory chunk is added to the stack. 
+                Every subsequent stack chunk demands more gas than its predecessor.
+            \item New commands to access elements from any stack depth.
+        \end{itemize}
+    \item The introduction of new control flow commands that support 
+        relative offsets and function calls, similar to EIP-615\footnote{
+        \url{https://eips.ethereum.org/EIPS/eip-615}}.
+    \item Program memory is divided into heap and stack, governed by 
+        the EVM applications's \texttt{stack\_ratio} parameter. 
+        For pure EVM applications, $\texttt{stack\_ratio} = 100$, meaning 
+        they only utilize the stack.
+\end{enumerate}
+
+The third property is achieved through synchronizing 
+the opcode sets of \evm with zkLLVM.
+
+% \todo[inline]{Should we mention here synchronization mechanism for 
+%     EVM contracts between shards?}
+
+\subsection{Security Mechanisms: zkRollup with Ethereum Stake and Data Availability}
+
+\subsubsection{zkEVM via zkLLVM: Type-1 Secure, Auditable and Performant zkEVM}
+\label{section:zkvm}
+
+As highlighted in Section \ref{section:introduction}, 
+\protocol derives its security from the Ethereum Network 
+by using state transition zero-knowledge proofs, similar 
+to zkRollups. 
+For this to work, every shard must submit 
+their updates, along with their proofs, to the main shard. 
+Afterwards, the main shard confirms its state transition to Ethereum.
+
+To achieve this objective, two essential components are required:
+\begin{itemize}
+    \item An efficient zkVM for \evm, constructed using zkLLVM. 
+        Given that \evm is an extension of EVM, 
+        \nil's zkVM can be viewed as a type-1 zkEVM.
+    \item Proof aggregation based on Placeholder's IVC. 
+        This allows the splitting of the complex zkVM circuit into 
+        multiple proofs, which can be computed in parallel. 
+\end{itemize}
+
+The general structure of \nil's zkEVM is not much different 
+from other zkEVM implementations. 
+It includes two types of proofs: the State Proof and the EVM Proof. 
+The State Proof ensures that operations are performed correctly. 
+However, it doesn't validate the exact location of the written or read data. 
+The EVM Proof, on the other hand, confirms that the State Proof 
+selected the correct data location.
+
+However, earlier versions of zkEVM have common limitations:
+\begin{itemize}
+    \item Circuit definition is resource-intensive: 
+        Creating a circuit takes a lot of time (even for experienced engineers) 
+        and significant resources.
+    \item Circuits can get complex: With the evolution of rollups, new features 
+        are introduced, leading to changes in existing circuits. 
+        This added complexity increases both risks and costs.
+    \item Manually crafted circuits may have security issues: 
+        Such circuits depend on human input and often use new, 
+        not fully tested libraries.
+    \item Circuit audits are challenging: 
+        The complexity and difficulty of auditing circuits
+        means audits remain both difficult and costly.
+\end{itemize}
+
+Furthermore, these limitations are not just a "one-time setup" challenge. 
+They recur with every EVM update.
+
+\nil's zkEVM, built on zkLLVM, removes human intervention 
+from the circuit definition process. 
+This solves the previously mentioned challenges.
+
+\subsubsection{Data Availability}
+\label{section:da}
+
+The Data Availability (DA) layer for L2 solutions outlines the method for storing 
+information essential to recover L2 data in emergency situations.
+
+The choice of DA varies between the main shard and the secondary shards:
+\begin{itemize}
+    \item The main shard employs Ethereum as its DA.
+    \item Secondary shards have the option to use Ethereum or 
+        opt not to have a distinct DA.
+\end{itemize}
+
+This arrangement is established by launching two kinds of shards at the start: 
+those with a separate DA and those without. 
+In subsequent phases, only shards of the same DA category can be merged. 
+This means that during its creation, each account must be mapped 
+to a specific DA category. 
+% \todo{Why do we offer this choise? May be we could enlist some particular 
+% type of our clients who really need Eth as DA?}
+
+Additionally, this framework can be expanded to include other types of DA.
+
+\paragraph{Ethereum as DA layer.}
+The comprehensive way to store a sufficient amount of data for restoring the L2 state is 
+keeping it as transaction \texttt{calldata} on Ethereum.
+That leads to the benefits of lower prices for storage because of its 
+lack of persistence.
+It also allows keeping the shards' data archived while preserving 
+some metadata for more straightforward access and search.
+It can be considered the finalized shard's state when 
+the distinct transaction with the 
+shard's state has been finalized on Ethereum. 
+
+The overall structure of the DA transaction can be separated into two parts -- payload for the 
+restoration process and metadata that is used for identifying the distinct shard, signature, 
+and details of the payload. 
+That is considered that the payload can be archived as direct 
+access to it in general cases is not required.
+
+% Define \textit{epoch} as an atomic transfer unit, 
+%  which means it can not be split into different logical transactions.
+% At the same time, it can still be divided into several L1 transactions if 
+% the overall size of the data sent to L1 exceeds the amount of gas for the block. In 2023, it was 
+% roughly 30 million gas for the Ethereum network. That all means that state restoration happens 
+% by the epochs and not single blocks, so if there's a need to commit a huge epoch to L1, it 
+% should be split into parts, and they must be strictly bound and ordered. Information about it 
+% will be stored in the metadata.
+
+
+Shard state can be represented with the following structure:
+\\
+\begin{verbatim}
+    struct ShardDescription {
+        uint32_t shardID;
+        uint32_t forkID;
+        uint8_t rev_shard[32];
+        uint8_t signature[32];
+        uint256_t epoch;
+        std::pair<uint32_t, uint32_t> epoch_part;
+        uint256_t payload_size;
+        uint8_t payload_hash[32];
+        uint8_t payload[];
+    };
+\end{verbatim}
+
+% As the number of submitted epochs per L1 transaction may vary, they must be stored as an 
+% array of \texttt{epochs}. For each subbmited epoch that must be kept the amount of splits used to 
+% transfer it. It's suggested that the size of the transaction for DA may exceed the max block 
+% size on Ethereum, and the transaction will be split. It is stored in \texttt{epochs\_parts}, as the 
+% relation \textit{epoch number} => (\textit{epoch part}, \textit{all parts})
+
+The main shard commits to L1 each epoch, which we consider could be around 5 minutes.
+The number of blocks per second on the shard will equal one. It leads to the estimation of 
+300 blocks that will be validated per one Ethereum epoch. Each sub-shard will try to keep 
+its state updated on the main shard, where we imply the number of transactions in the block 
+will equal the number of shards running at the same time. 
+
+To restore the main shard state it's sufficient to keep only sub-shards' transition states 
+for each epoch. That leads to the statement of the sufficiency of commiting to L1 only the 
+difference between transitions from the previous main shard epoch to the current.
+
+For further estimations, it's supposed that the number of shards running simultaneously is equal 
+to 100. The expected size of each transition difference is around 96 bytes (state root, aggregated signature,
+transaction hash, other values are small enough to ignore them in this analysis), 
+while the empty transaction size is around 109 bytes. 
+The total expected size for one commitment of the main shard to the L1 network 
+is 
+\[ 100 \cdot (109 + 96) = 20500 \texttt{ bytes} \]
+which is 328000 gas (upper estimation). 
+That is the approximate amount of data that will be transferred to the L1 network
+by the main shard. 
+That data will be stored in an archived way, leading to a smaller size. 
+As well for more precise estimation, that must be summed up with a size of proof and some metadata 
+for the L1 transaction. 
+That is expected the size of the proof could reach 200 kilobytes. 
+That will lead to $200000 + 20500 = 220500$ bytes or $3528000$ gas (upper estimation).
+
+
+
+% \subsubsection{Stake Market: Restaking Pool's TVL}
+% \label{section:stake-market}
+
+% \stakemarket \cite{stake-market}, \cite{recipient-network} is a restaking protocol for Ethereum focused on 
+%  existing Ethereum pools. 
+
+% Restaking is an economic security mechanism for 
+% Proof-of-Stake-like protocols. 
+% Remember that in this model, the cluster security is defined 
+% by the staked assets of the protocol's participants. 
+% If a participant acts dishonestly, they lose their assets.
+
+% The basic idea behind restaking is to re-use the assets 
+% staked in one (usually more popular and mature) protocol 
+% to provide security for another protocol.
+
+% Despite existing concepts, the real implementation and goals
+%  for such protocols quite often differ. 
+% For example, EigenLayer, in particular, places a strong emphasis 
+%  on individual asset providers, which can potentially limit 
+%  the amount of locked value and the system's flexibility. 
+% For example, in contrast, a more contemporary approach 
+%  known as validator pools (e.g. Lido) constitutes a significant portion
+%  of Ethereum's TVL.
+%  The \stakemarket protocol's objective is to offer the capability 
+%  to efficiently reuse assets for both pooled validators 
+%  and individual asset providers, enhancing the system's versatility.
+
+%  There are the following basic roles on \stakemarket:
+%  \begin{enumerate}
+%      \item \textit{Services} (or \textit{Clients}) are networks with
+%          PoS-alike security mechanisms that want to derive security from 
+%          Ethereum. 
+%      \item \textit{Validator} is an actor who is running a specific type of software
+%          to validate the correctness of the services.  
+%      \item \textit{Individual delegator} 
+%          represents the individual person who is willing to delegate 
+%          their assets to Stake Market.
+%      \item \textit{Collective delegator} represents an organization
+%          that is willing 
+%          to delegate their assets to Staking Market and provide 
+%          a set of validators for these assets. 
+%  \end{enumerate}
+
+%  For unification purposes, we use the idea of \textit{Delegator Abstraction}.
+%  It allows us to work with collective and individual delegators in the same way.
+%  Delegator Abstraction works as a DAO that represents the interests of all 
+%  individual delegators and validators. 
+
+% Thus, short-term security of \protocol is maintained by \stakemarket,
+%  while long-term security is defined by \nil's zkEVM proof verification 
+%  on Ethereum side.
+
+\subsection{Ethereum Data Access}
+\label{section:eth-data-access}
+
+Direct access to Ethereum data is based on the 
+Data Provider module within the protocol's node.
+The Data Provider operates independently from the shard's data storage 
+and synchronizes its information with an external database. 
+The most recent state of this database must receive validation 
+from the confirmation module. 
+As an Ethereum confirmation module, we use zkBridge 
+with Ethereum consensus proof.
+
+The fingerprint of the last monitored database state 
+(represented by Ethereum's block hash) is added into the shard's block. 
+This is done with a confirmation that can be authenticated using \evm. 
+
+\subsubsection{Calls to Ethereum Application}
+From a developer's perspective, accessing Ethereum data does not differ 
+from any other calls within the original Ethereum network. 
+This is achieved by making a distinction between the original Ethereum 
+addresses and \protocol addresses at the \evm level. 
+Each \evm instruction that works with the \texttt{address} type 
+checks whether the address belongs to the Ethereum Network.
+If it does, the \evm retrieves data from the Data Provider module instead of 
+the original database.
+
+This means that the source code for original Ethereum applications 
+and \protocol applications does not differ:
+
+\begin{verbatim}
+    // Imagine that the applications Caller does not have the source code for the
+    // applications Receiver, but it knows the address of applications Receiver 
+    // and the function to call.
+    function testCallFoo(address _addr) public view {
+        // You can send ether and specify a custom gas amount
+        (bool success, bytes memory data) = _addr.call(
+            abi.encodeWithSignature("foo(string,uint256)", "call foo", 123)
+        );
+
+        emit Response(success, data);
+    }
+\end{verbatim}
+
+Note that \texttt{foo} must be a \texttt{view} or \texttt{pure} function. 
+If it is not, the transaction will be reverted.
+
+% \todo[inline]{This means that we need some migration mechanism,
+%  to handle addresses differnece etc.}
+
+The same approach can be applied to other external databases and networks.

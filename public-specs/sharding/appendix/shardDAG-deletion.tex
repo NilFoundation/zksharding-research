@@ -1,0 +1,45 @@
+\section{ShardDAG Deletion}
+\label{appendix:shardDAG-deletion}
+The purpose of a sharded blockchain is to allow the system to scale to larger throughput than is possible in non-sharded blockchains. 
+It is therefore necessary to consider the scaling properties of the shardDAG. 
+Summarizing the shardDAG system described above, validators are required to
+\begin{itemize}
+	\item Receive and store shard block headers from all shards.
+	\item Receive and store shard block outboxes of cross-shard transactions from all shards.
+	\item Send shard block headers that have been stored.
+	\item Send shard block outboxes of cross-shard transactions that have been stored.
+\end{itemize}
+
+Over time storing the outboxes of cross-shard transactions would accumulate into a large database and become a burden on validators. 
+Fortunately, each outbox of cross-shard transactions produced by other shards need only be stored until it can be confirmed that its contents have been included in a shard block in each of their destination shards, and those shard blocks are finalised and cannot be rolled back, i.e. included in a consensus block, and all required ZK proofs have been created and validated.
+
+Validators do not receive or store processed transactions in each shard block, meaning that validators cannot track precisely when old cross-shard transaction data is no longer needed and can be deleted. 
+Instead, periodic sampling can be used to efficiently determine when old cross-shard transaction data is no longer needed. 
+To do so, validators can use the following process illustrated in Fig.~\ref{figure:shardDAG-deletion}.
+\begin{figure}
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/DataDeletion.jpg}
+	\caption{An illustration of the sampling procedure for determining shardDAG data that can be deleted. 
+		A set of entire ZK finalised shard blocks B (red dashed rectangles) are sampled. 
+		Left: the red shard block contains cross-shard transactions created within shard blocks $C$ (blue bordered shard blocks), hence the red shard has already processed all cross-shard transactions in blocks that fall under any blue block. 
+		These form $D$, noting that an element of $C$ can be present in $D$ iff it falls under another element of $C$, here indicated by the yellow block with blue border. 
+		Centre: Similar to left, but for a different element of $B$. 
+		Right: $E$ is composed of the lowest shard blocks for each shard in all $D$’s. 
+		All cross-shard transactions created by shard blocks in $E$’s subgraph have been processed and ZK finalised, thus $E$’s data can be deleted.}
+	\label{figure:shardDAG-deletion}
+\end{figure}
+\begin{enumerate}
+	\item Periodically sample a set $B$ of ZK finalised shard blocks (that cannot be rolled back), one for each shard. 
+	It is necessary to obtain each block’s list of processed transactions and cross-shard transactions.
+	\item For each shard block $b$ in $B$, find the set of shard blocks $C$ originating each processed cross-shard transactions. 
+	\item For each $C$, construct the set of shard blocks $D$ that are the highest shard blocks that are in the subgraph of an element of $C$, but are not themselves an element of $C$ unless it falls under another element of $C$. 
+	According to the protocol ordering rules, any cross-shard transactions contained within shard blocks that fall under $C$ have already been processed. 
+	$D$ defines a cut across the shardDAG that distinguishes shard blocks that must have, and may not have been completely processed.
+	\item Across each $D$ for all shards, extract the lowest shard block for each shard to construct the set of shard blocks $E$.
+	\item The validator can delete shard block headers and cross-shard transaction data for shard blocks that are in the subgraph of $E$, including the elements of $E$ (but excluding data from the validator’s own shard which is required for participating in that shard).
+\end{enumerate}
+
+To function efficiently step 2 requires that shard blocks contain hash data linking each processed cross-shard transaction to the shard block that created it.
+
+The sampling frequency should be short enough that validator storage requirements are manageable. ZK block proofs are expected to require approximately 10 minutes to produce, thus the sampling period should likely be some multiple of this. 
+Storing an hour, or few hours worth of data is insignificant compared to storing an entire history, and sampling a single block from each shard this often is not a significant burden.

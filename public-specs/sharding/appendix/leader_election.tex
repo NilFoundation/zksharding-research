@@ -1,0 +1,13 @@
+\section{Leader Election Subprotocol}
+\label{appendix:election}
+
+One could rotate leaders in a round-robin fashion, $\texttt{leader\_id} = \texttt{view} \mod n$,
+but this would be vulnerable to DoS attacks, since an adversary easily can obtain the leader schedule.
+Instead, we use a leader election protocol based on Verifiable Random Functions (VRFs), as proposed in \cite{LibraBFT}:
+\begin{align*}
+    \texttt{seed} &= \texttt{VRF}_{\texttt{prev\_leader}}(\texttt{height}, \texttt{view}) \\
+    \texttt{leader\_id} &= \texttt{PRF}_{\texttt{seed}}(\texttt{view}) \mod n
+\end{align*}
+where \texttt{PRF} is a pseudorandom function.
+The leader of the previous view provides the seed as a result of evaluating the VRF.
+Every node can verify that the seed is correct by evaluating the VRF with the public key of the previous leader.

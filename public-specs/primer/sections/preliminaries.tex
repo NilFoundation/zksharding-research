@@ -1,0 +1,129 @@
+\section{Foundations for \protocol}
+\label{section:preliminaries}
+
+This section describes the precursor set of technologies leading to the
+product description in Section \ref{section:proposal}.
+
+\subsection{zkLLVM}
+
+zkLLVM (\cite{zkllvm}) is a circuit compiler designed to translate high-level 
+mainstream languages, such as C++ and Rust, into representations suitable for 
+provable computation protocols, namely circuits for proof systems.
+
+The architecture of zkLLVM offers distinct advantages over other 
+methods of circuit development:
+\begin{enumerate}
+    \item It allows users to directly compile their algorithm,
+        without needing a custom Domain Specific Language (DSL) 
+        and duplicating source code.
+    \item It omits any intermediary layer, such as a specific zkVM, 
+        between the original algorithm and the resulting circuits. 
+        This absence translates to no additional overhead in the circuit size 
+        (and consequently, the proving time).
+    \item Due to direct access to the inner circuit representation, zkLLVM facilitates 
+        the generation of optimized low-level verifier code tailored for 
+        specific virtual machines. 
+        For example, \nil utilizes the zkLLVM transpiler\footnote{
+            \url{https://github.com/NilFoundation/zkllvm-transpiler}} 
+        for the EVM Placeholder verifier.
+    \item As an LLVM-based compiler, zkLLVM boasts compatibility with any LLVM 
+        IR-based extension.
+\end{enumerate} 
+
+zkLLVM assumes a crucial role in the novel zkEVM construction approach, 
+detailed further in Section \ref{section:zkvm}.
+
+
+\subsection{Placeholder Proof System}
+
+Initiated in 2021, Placeholder \cite{placeholder} is 
+a modular IVC (Incrementally Verifiable Computation) that relies 
+on a PLONK-inspired arithmetization-based proof system. 
+Its inherent modularity provides the flexibility for various adjustments based on the specific use case:
+
+\begin{itemize}
+    \item \textbf{Underlying Fields}: 
+        For algorithms that do not involve cryptographic operations, 
+        there is often no requirement for 256-bit fields. 
+        To optimize both the proving and verification processes, 
+        Placeholder can be adapted to work with 64-bit fields.
+    \item \textbf{Commitment Schemes}:
+        The choice between commitment schemes, such as 
+        those based on hashes or bilinear pairings, allows 
+        for trade-offs between the necessity for a trusted setup 
+        and associated verification expenses.
+    \item \textbf{Lookup Techniques}:
+        Different techniques, like Plookup or Baloo, can be employed 
+        depending on the size of the lookup table and 
+        the frequency of lookup requests, thus reducing the lookup overhead.
+    \item \textbf{Gate Generation Techniques}:
+        Efficient IVC is achieved using an approach similar to 
+        Protostar for gate definition. Nonetheless, this might 
+        not always be the optimal choice, especially when there is 
+        no need for recursive proof verification.
+\end{itemize}
+
+Such modularity enables Placeholder to reduce the confirmation times 
+on the L1-layer and speed up zkBridge data provision. 
+This is achieved through faster IVC-based zkVM 
+and Ethereum consensus proof generation.
+
+
+\subsection{zkBridge}
+
+zkBridge is a concept that emerged in early 2021 from collaborative efforts 
+between the \nil Foundation, Ethereum Foundation, and Mina Foundation 
+\cite{evm-mina-verification-design}. 
+Later in the same year, the Solana Foundation joined this initiative 
+\cite{evm-solana-verification-design}.
+
+This concept materialized into a series of trustless bridging 
+ projects amongst the Mina, Ethereum, and Solana networks. 
+
+The data access approach detailed in Section \ref{section:eth-data-access} 
+harnesses the zkBridge concept to minimize trust assumptions.
+
+\subsection{Crypto3}
+
+Crypto3\footnote{\url{https://github.com/NilFoundation/crypto3}} 
+ is a modular cryptographic suite developed in C++17. 
+It is designed to support the research 
+ and development of innovative primitives and protocols
+ by creating new constructions or combining existing ones. 
+The suite includes a variety of constructions, such as basic algebraic structures 
+ (like finite fields and elliptic curves) and cryptographic primitives 
+ (for instance, symmetric and asymmetric encryption,
+  threshold signatures, and algebraic hash functions).
+
+Additionally, Crypto3 serves as a C++ Software Development Kit (SDK) for zkApp development, 
+making it easier to use zkLLVM. 
+For example, zkBridge solution developed with \nil technologies utilizes Crypto3 
+as the SDK for zkLLVM.
+ 
+\subsection{Proof Market}
+\label{section:proof-market}
+
+Proof Market\footnote{\url{proof.market}} is a decentralized platform. 
+It is designed to outsource zkProof generation tasks. The foundational premise 
+behind Proof Market is straightforward. It aims to aggregate the hardware-intensive 
+demand for proof generation from numerous protocols. Then, it reallocates these 
+tasks to independent entities. These entities include professional hardware operators, 
+equipment owners, and circuit/hardware designers.
+
+This arrangement fosters a dynamic marketplace. In this marketplace, hardware 
+operators can directly cater to the needs of proof consumers. Proof Market can 
+maintain a consistent and robust demand due to its substantial user base. This 
+sustained demand draws in large-scale hardware operators. They are keen on 
+maximizing the utilization of their resources.
+
+Proof Market presents a competitive landscape for proof producers. This environment 
+compels them to relentlessly pursue the optimization of proof generation overheads.
+Several strategies can achieve this. Producers might scale up their infrastructure.
+This scaling can benefit from economies of scale. Alternatively, they can refine 
+their hardware for optimal proof generation efficiency. A producer who offers 
+competitive pricing and rapid proof generation can dominate the market. This 
+dominance incentivizes other operators to enhance their competitive offerings.
+
+By leveraging Proof Market for proof generation, \protocol achieves a significant 
+advantage. It can ensure decentralized proof generation from the day one. At the 
+same time, it distinguishes between the roles of validators and proof generators.

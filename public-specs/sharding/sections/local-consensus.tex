@@ -1,0 +1,235 @@
+\section{Intra-shard Replication}
+\label{section:local-consensus}
+
+An \textit{account} is a minimal data unit from the sharding 
+algorithm perspective. An account is characterized by its address 
+and its associated source code. Notably, there's no distinction between user 
+wallets and other applications. 
+
+The state of the cluster is split into parts called \emph{shards}.
+The shards operate semi-independently, handling only a portion of the accounts of the zkSharding database.
+
+Each shard is maintained by a subset of validators called \emph{committee}.
+The committee is responsible for the integrity of the shard's state.
+Since committee members might be malicious, 
+ this situation falls within the context of the Byzantine Fault Tolerance (BFT) State Machine Replication (SMR) problem.
+A BFT SMR protocol for a shard is discussed in this section.
+
+% \subsection{Shard structure as a blockchain}
+% \label{section:local-consensus:shard-structure}
+% One of the key properties of the BFT SMR is that the state of the system can be restored from the log of committed transactions.
+
+% A way to achieve this property is to use a blockchain data structure\cite{nakamoto2008bitcoin} for a shard's transactions commit log.
+% The blockchain is a sequence of blocks $\{B_k\}_{k=0}^K$ along with a validity predicate \texttt{isValid}.
+
+% In more detail, following notation from \cite{HotStuff2}, each block $B_k$ contains a sequence of transactions $T_{k}$
+% and a reference to the previous block $h_{k-1} \coloneqq H(B_{k-1})$:
+% $$
+% B_k \coloneqq (T_k, h_{k-1}).
+% $$
+% The first block $B_0$ is called the \emph{genesis state} and is defined as $B_0 \coloneqq (\emptyset, \bot)$,
+% where $\bot$ is a special value.
+
+% The validity predicate \texttt{isValid} is defined as follows:
+% \begin{align*}
+%     \texttt{isValid}(B_0) &\coloneqq \texttt{true}, \\
+%     \texttt{isValid}(B_k) &\coloneqq \texttt{true} \iff \texttt{isValid}(B_{k-1}) \land \texttt{isValidBlock}(B_k),
+% \end{align*}
+% where \texttt{isValidBlock} is a predicate that checks the validity of a block defined on an application level.
+
+% \begin{remark}
+%     The block validity predicate \texttt{isValidBlock} also contains protocol-level checks:
+%     \begin{itemize}
+%         \item \emph{Message passing check:} the block processes all necessary outgoing messages from neighboring shards
+%         \item \emph{State consensus check:} the block is committed by a designated committee
+%     \end{itemize}
+%     It is discussed in more detail in Section~\ref{section:sharding}.
+% \end{remark}
+
+% Hence, one can restore the shard's state from the log of committed transactions by applying the transactions in the blocks in order:
+% \begin{align*}
+%     \texttt{state}_0 &\coloneqq \texttt{init}(), \\
+%     \texttt{state}_{k} &\coloneqq \texttt{execute}\left(
+%         \texttt{state}_{k-1},
+%         B_{k-1}
+%         % \texttt{exec\_descr}
+%     \right)
+% \end{align*}
+
+% The full shard state can be kept in the following structure:\todois{TODO for Vitaliy: discuss this in details with Ilia S.}
+% \begin{verbatim}
+%     struct ShardState {
+%         shardId: uint;
+%         height: uint;
+%         shardStateTreeHash: byte[];
+%         outgoingMsgQueuesSetHash: byte[];
+%         accountsStateTree: type;
+%         commitLog: type;
+%         outgoingMsgs: List<byte[]>;
+%     }
+% \end{verbatim}
+
+\subsection{Local consensus}
+
+% \subsubsection{Overview}
+% % \begin{tabular}{rccc}
+% %     \hline Protocol & View-change complexity & Responsive view-change & Phases \\
+% %     \hline PBFT\cite{PBFT} & $O\left(n^2\right)$ & yes & 2 \\
+% %     Tendermint\cite{Tendermint} & $O(n)$ & no & 2 \\
+% %     HotStuff\cite{HotStuff} & $O(n)$ & yes & 3 \\
+% %     HotStuff-2\cite{HotStuff2} & $O(n)$ & no & 2 \\
+% %     \hline
+% % \end{tabular}
+
+
+% HotStuff \cite{HotStuff} originally improved Tendermint's \cite{Tendermint} responsiveness and communication complexity once nodes
+% enter the same view, requiring 3 phases and splitting the protocol into \emph{view-synchronization} and \emph{in-view operation} subprotocols.
+% However, the view-synchronization subprotocol remained a bottleneck, having quadratic communication complexity in the average case.
+% Hence, HotStuff provided an efficient solution only for the in-view operation subprotocol.
+% HotStuff-2 \cite{HotStuff2} improves HotStuff's in-view operation subprotocol by reducing the number of rounds to 2.
+
+\subsubsection{Pacemaker Module}
+The pacemaker module is a liveness component of the consensus protocol.
+It ensures that parties eventually arrive at a view with an honest leader and spend a sufficient amount of time in the view to commit a block.
+The problem pacemaker solves is called \emph{Byzantine View Synchronization problem} and is thoroughly researched in literature.
+As mentioned above, the pacemaker module is a bottleneck of the consensus protocol. Hence, an efficient pacemaker is crucial for
+the overall performance of the consensus protocol.
+
+HotStuff-2 uses RareSynch \cite{RareSync} and Lewis-Pye \cite{LewisPye} adaptatioin of a pacemaker protocol,
+which has theoretically optimal worst case performance,
+however its average case performance coinsides with the worst case performance, having $O(n^2)$ communication complexity in the average case and $O(n\Delta)$ latency.
+Previously, a simple yet efficient (in average case) pacemaker protocol was proposed in Naor-Keidar \cite{NaorKeidar}.
+It has constant expected latency $O(1)$, and worst case latency is $\Omega(n\Delta)$,
+which was already optimal, \cite{FLP_like}. However, it improves the communication complexity from $O(n^2)$ to $O(n)$ in the average case.
+Worst-case complexity is still $O(n^3)$, but with randomized leader selection, the probability of cascading leader failure is small.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|cc|cc|}
+    \hline
+    \multirow{2}{*}{\textbf{Protocol}} & \multicolumn{2}{c|}{\textbf{Latency}} & \multicolumn{2}{c|}{\textbf{Message Complexity}} \\ 
+     & \textbf{Avg} & \textbf{Worst} & \textbf{Avg} & \textbf{Worst} \\ 
+    \hline 
+    Cogsworth\cite{Cogsworth} & \(O(1)\) & \(O(n\Delta)\) & \(O(n^2)\) & \(O(n^3)\) \\
+    Naor-Keidar\cite{NaorKeidar} & \(O(1)\) & \(O(n\Delta)\) & \(O(n)\) & \(O(n^3)\) \\
+    RareSync/LewisPye\cite{RareSync,LewisPye} & \(O(n)\) & \(O(n)\) & \(O(n^2)\) & \(O(n^2)\) \\
+    \hline
+    \end{tabular}
+    \caption{Comparison of Pacemaker Protocols}
+    \label{table:pacemaker-comparison}
+\end{table}
+
+As a part of consensus algorithm, zkSharding employs Naor-Keidar pacemaker protocol, named Cogsworth \cite{Cogsworth}.
+Algorithm \ref{alg:pacemaker-protocol} provides a high-level description of the simplified version of the protocol.
+According to the protocol, a party enters a new view if one of the following conditions is met:
+\begin{itemize}[midpenalty=10000]
+\item The block from the previous view was committed.
+\item A timeout certificate was received.
+\item A view-change certificate was received.
+\end{itemize}
+
+\SetKwInput{KwWish}{WISH}
+\SetKwInput{KwReady}{READY}
+\SetKwInput{KwAdvance}{ADVANCE}
+
+\begin{algorithm}[H]
+    \DontPrintSemicolon
+    \SetAlgoLined
+    \caption{Pacemaker Protocol (Cogsworth)}
+    \label{alg:pacemaker-protocol}
+    \SetKwProg{Step}{Step}{:}{}
+    \Step{Wish}{
+        \textbf{Non-Leader:} If there is no progress, send the leader of view \( r+1 \) a message \( \texttt{(WISH, r+1)} \).
+
+        \textbf{Leader:} Collects \( f+1 \) \( \texttt{(WISH, r+1)} \) messages and broadcasts an aggregate.
+    }
+    \Step{Ready}{
+        % Byzantyne reliable broadcast is just broadcast, collect 2f+1 votes and broadcast again
+        Upon receiving \texttt{WISH} aggregate from any leader, it responds with \( \texttt{(READY, r+1)} \).\;
+
+        Upon timeout, it forwards the \texttt{WISH} aggregate to fallback leaders of views \( r+2, \ldots, r+f+1 \), one by one, to collect READY responses, until there is progress.
+    }
+    % advance
+    %  - C(C(B)) is collected, then enter the next view (optimistic case)
+    \Step{Advance}{
+        \textbf{Leader:} \( 2f+1 \) \( \texttt{(READY, r+1)} \) messages and broadcasts a \texttt{READY} aggregate.\;
+        \textbf{Non-Leader:} Upon receiving a \texttt{READY} aggregate from any leader, it enters view \( r+1 \).
+        Upon timeout, it forwards the \texttt{WISH} aggregate to fallback leaders of views \( r+2, \ldots, r+f+1 \),
+        one by one, to collect \texttt{READY} responses, until there is progress.
+    }
+\end{algorithm}
+
+\subsubsection{In-View Protocol}
+An in-view protocol is a protocol that parties execute once they enter the same view and is used to commit a block.
+It is a safety component of a consensus protocol.
+
+A \emph{quorum certificate} (QC) is a proof that a replicaiton packets was signed by a
+quorum (2/3 of the committee) of validators. 
+In one view $v$, there can be at most one QC for a block $B_k$, denoted as $C_v(B_k)$,
+and at most one QC for a block QC from the same view, denoted as $C_v(C_v(B_k))$.
+
+Here, a basic (not pipelined) version of the in-view protocol proposed in \cite{HotStuff2} is described.
+Pipelining is a technique to amortize the number of rounds required to commit a block.
+In a steady state, the protocol has two vote phases. 
+A high-level description of the protocol, after honest nodes enter the same view \(v\), is given in Algorithm~\ref{alg:in-view-protocol}.
+
+\SetKwInput{KwPropose}{Propose}
+\SetKwInput{KwVoteOne}{Vote 1}
+\SetKwInput{KwPrepare}{Prepare}
+\SetKwInput{KwVoteTwo}{Vote 2}
+\SetKwInput{KwCommit}{Commit}
+\SetKwInput{KwEnter}{Enter}
+\SetKwInput{KwIsSafe}{isSafe}
+
+
+\begin{algorithm}[H]
+    \DontPrintSemicolon
+    \SetAlgoLined
+    \caption{In-View Protocol (view \(v\), height \(k\))}
+    \label{alg:in-view-protocol}
+    \SetKwProg{Step}{Step}{:}{}
+    \SetKwProg{Fn}{Function}{:}{}
+    \SetKwFunction{isSafe}{isSafe}
+
+    \Step{Enter}{
+        \uIf{in view \(v-1\) a block \(B_{k-1}\) was committed}{
+            \textbf{Leader:} Go to \textbf{Propose} step.
+
+            \textbf{Non-leader:} Go to \textbf{Vote 1} step.
+        }
+        \Else{
+            \textbf{Leader:} Wait for \(\Delta\) time, then go to \textbf{Propose} step.
+
+            \textbf{Non-leader:} Send \texttt{lockedValue} to the leader, then go to \textbf{Vote 1} step.
+        }
+    }
+    \Step{Propose}{
+        Leader proposes a block \(B_k\) and broadcasts \(\texttt{propose}(v, B_k)\) to all nodes.\;
+        \tcp*[l]{\(B_k\) is either a locked block with the highest view among all \texttt{lockedValue} messages, or a new block created by the leader.}
+    }
+    \Step{Vote 1}{
+        Upon receiving \(\texttt{propose}\):\\
+        \uIf{\(\texttt{isSafe}(B_k) = \texttt{true}\)}{
+            Vote for \(B_k\) by threshold signing \(\texttt{vote}(v, h_k)\), where \(h_k = H(B_k)\), and send it to the leader.
+            }
+    }
+    \Step{Prepare}{
+        Leader aggregates \(2f+1\) votes into a QC \(C_v(B_k)\) and broadcasts \(\texttt{prepare}(v, C_v(B_k))\).
+    }
+    \Step{Vote 2}{
+        Upon receiving \(\texttt{prepare}\):\\
+        Vote for \(C_v(B_k)\) by threshold signing \(\texttt{vote}(v, C_v(B_k))\), and send it to the leader.\;
+        \texttt{lockedView} $\coloneqq v$ \;
+        \texttt{lockedValue} $\coloneqq (B_k, C_v(B_k))$ \;
+    }
+    \Step{Commit}{
+        Leader aggregates \(2f+1\) votes into a QC \(C_v(C_v(B_k))\) and broadcasts \(\texttt{commit}(v, C_v(C_v(B_k)))\).
+    }\;
+
+    \Fn{\isSafe{\(B_k\)}}{
+        \uIf{\texttt{isValidBlock}(\(B_k\)) $\land$ \texttt{lockedView} $< v$}{
+            \Return \texttt{true}
+        }
+        \Return \texttt{false}
+    }
+\end{algorithm}
